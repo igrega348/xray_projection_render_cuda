@@ -1,6 +1,7 @@
 # X-ray Projection Renderer (CUDA Version)
 
 This is a CUDA-accelerated version of the X-ray projection renderer, which generates X-ray projections of simple objects. The renderer supports various geometric primitives and deformation fields, with parallel processing on NVIDIA GPUs.
+See repository https://www.github.com/igrega348/xray_projection_render/ for parent Go code.
 
 ## Features
 
