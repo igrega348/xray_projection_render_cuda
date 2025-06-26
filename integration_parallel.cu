@@ -6,7 +6,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-const float flat_field = 0.0f;
+#define flat_field (0.0f)
+// const float flat_field = 0.0f;
 
 // Structure for 3D vectors
 struct Vec3 {
@@ -70,7 +71,7 @@ __host__ __device__ float integrate_hierarchical(const Vec3 origin, const Vec3 _
 	float left = smin;
 	float ds = DS / 10.0f;
 	float prev_rho = 0.0f;
-	float T = flat_field;
+	float T = 0.0f; //flat_field;
 	while (right <= smax){
     Vec3 x = origin + direction * right;
 		float rho = density(x);
@@ -92,12 +93,11 @@ __host__ __device__ float integrate_hierarchical(const Vec3 origin, const Vec3 _
 	return exp(-T);
 }
 
-void assemble_image_kernel(
+__global__ void assemble_image_kernel(
   float* output,
   int width
 ){
-  // int idx = blockIdx.x;
-  int idx = 0;
+  int idx = blockIdx.x;
   if (idx>=width) return;
 
   // integrate over y
@@ -116,8 +116,8 @@ int main(){
   float *Ts = new float[N];
   cudaMallocManaged(&Ts, N*sizeof(float));
   std::cout << "Memory allocated" << std::endl;
-  assemble_image_kernel(Ts, N);
-  // assemble_image_kernel<<<1,1>>>(Ts, N);
+  assemble_image_kernel<<<N,1>>>(Ts, N);
+
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   std::cout << "Integral: " << std::endl;

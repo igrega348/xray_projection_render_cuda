@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <stdint.h>
 #include <iostream>
 #include <cmath>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
