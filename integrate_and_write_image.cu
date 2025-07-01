@@ -112,22 +112,34 @@ __global__ void assemble_image_kernel(
 }
 
 int main(){
-  const int N = 16;
-  const int width = 4;
+  const int width = 128;
+  const int N = width*width;
   // float *Ts;
   float *Ts = new float[N];
   cudaMallocManaged(&Ts, N*sizeof(float));
   std::cout << "Memory allocated" << std::endl;
   assemble_image_kernel<<<N,1>>>(Ts, width);
-
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
-  std::cout << "Integral: " << std::endl;
-  for (int i = 0; i<N; i++){
-    std::cout << Ts[i] << std::endl;
+  char name[] = "image.png";
+  std::cout << "File name: " << name << std::endl;
+  uint8_t data[width*width] = {};
+  for (int i = 0; i<width*width; i++){
+    data[i] = 255;
   }
-  std::cout << std::endl;
+  for (int i = 0; i<width; i++){
+    for (int j = 0; j<width; j++){
+      data[i*width + j] = (uint8_t) (255.0f * Ts[i*width + j]);
+    }
+  }
+  std::cout << "Stride: " << sizeof(data[0]) << std::endl;
+  std::cout << "Array: " << sizeof(data) << std::endl;
+  int stride = width;
+  stbi_write_png_compression_level = 1;
+  stbi_write_png(name, width, width, stbi_write_png_compression_level, &data, stride);
+  std::cout << "Image written" << std::endl;
   // Free memory
   cudaFree(Ts);
   return 0;
 }
+
