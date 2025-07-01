@@ -97,28 +97,30 @@ __global__ void assemble_image_kernel(
   float* output,
   int width
 ){
-  int idx = blockIdx.x / width;
-  int idy = blockIdx.x % width;
-  if (idx>=width || idy>=width) return;
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  int j = blockIdx.y * blockDim.y + threadIdx.y;
+  if (i>=width || j>=width) return;
 
   // integrate over y
-  float y = 2.0f*((float) idy) / ((float) width) - 1.0f;
-  float z = 2.0f*((float) idx) / ((float) width) - 1.0f;
+  float y = 2.0f*((float) j) / ((float) width) - 1.0f;
+  float z = 2.0f*((float) i) / ((float) width) - 1.0f;
   Vec3 x0(-3.0, y, z);
   Vec3 x1(3.0, y, z);
   Vec3 t = x1 - x0;
-  output[idx*width + idy] = integrate_hierarchical(x0, t, 0.01, 0.0, 6.0);
+  output[i*width + j] = integrate_hierarchical(x0, t, 0.01, 0.0, 6.0);
   return;
 }
 
 int main(){
   const int width = 128;
   const int N = width*width;
+  dim3 threadsPerBlock(16, 16);
+  dim3 numBlocks(N / threadsPerBlock.x, N / threadsPerBlock.y);
   // float *Ts;
   float *Ts = new float[N];
   cudaMallocManaged(&Ts, N*sizeof(float));
   std::cout << "Memory allocated" << std::endl;
-  assemble_image_kernel<<<N,1>>>(Ts, width);
+  assemble_image_kernel<<<numBlocks, threadsPerBlock>>>(Ts, width);
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   char name[] = "image.png";
