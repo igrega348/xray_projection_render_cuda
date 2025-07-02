@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <iostream>
 #include <cmath>
@@ -50,21 +49,42 @@ struct Vec3 {
 
 };
 
-__host__ __device__ float density(const Vec3 x){
-  const Vec3 c(0.0f, 0.0f, 0.0f);
-  const float R = 1.0f;
-  Vec3 dx = x - c;
-  float r = dx.length();
-  if (dx.length() < R){
-    return 1.0f;
+class Object{
+  public:
+  __host__ __device__ virtual float density(const Vec3 x) const = 0;
+};
+
+struct Sphere : Object{
+  Vec3 center;
+  float radius;
+  __host__ __device__ Sphere(const Vec3& center, float radius) : center(center), radius(radius) {}
+  __host__ __device__ float density(const Vec3 x) const {
+    Vec3 dx = x - center;
+    float r = dx.length();
+    if (r < radius){
+      return 1.0f;
+    }
+    return 0.0f;
   }
-  return 0.0f;
-}
+};
+
+struct Cube : Object{
+  Vec3 center;
+  float size;
+  __host__ __device__ Cube(const Vec3& center, float size) : center(center), size(size) {}
+  __host__ __device__ float density(const Vec3 x) const {
+    Vec3 dx = x - center;
+    if (abs(dx.x) < size && abs(dx.y) < size && abs(dx.z) < size){
+      return 1.0f;
+    }
+    return 0.0f;
+  }
+};
 
 // Integrate the density along the ray from the origin to the end point.
 // Hierarchical integration method which is more efficient than simple integration.
 // Refines the integration step size based on the density of the scene.
-__host__ __device__ float integrate_hierarchical(const Vec3 origin, const Vec3 _direction, float DS, float smin, float smax){
+__host__ __device__ float integrate_hierarchical(const Object& object, const Vec3 origin, const Vec3 _direction, float DS, float smin, float smax){
 	Vec3 direction = _direction.normalize();
 	// integrate using sliding window
 	float right = smin + DS;
@@ -74,12 +94,12 @@ __host__ __device__ float integrate_hierarchical(const Vec3 origin, const Vec3 _
 	float T = 0.0f; //flat_field;
 	while (right <= smax){
     Vec3 x = origin + direction * right;
-		float rho = density(x);
+		float rho = object.density(x);
 		if ((rho == 0) != (prev_rho == 0)){ // rho changed between left and right
 			left += ds;
 			while (left < right){
         x = origin + direction * left;
-				T += density(x) * ds;
+				T += object.density(x) * ds;
 				left += ds;
 			}
 			T += rho * ds; // reuse rho from right
@@ -95,38 +115,26 @@ __host__ __device__ float integrate_hierarchical(const Vec3 origin, const Vec3 _
 
 __global__ void assemble_image_kernel(
   float* output,
-  int width
-){
+  int width,
+  const Object& object
+  ){
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   int j = blockIdx.y * blockDim.y + threadIdx.y;
   if (i>=width || j>=width) return;
 
-  // integrate over y
+  // integrate over y and z
   float y = 2.0f*((float) j) / ((float) width) - 1.0f;
   float z = 2.0f*((float) i) / ((float) width) - 1.0f;
   Vec3 x0(-3.0, y, z);
   Vec3 x1(3.0, y, z);
   Vec3 t = x1 - x0;
-  output[i*width + j] = integrate_hierarchical(x0, t, 0.01, 0.0, 6.0);
+  output[i*width + j] = integrate_hierarchical(object, x0, t, 0.01f, 0.0f, 6.0f);
   return;
 }
 
-int main(){
-  const int width = 128;
-  const int N = width*width;
-  dim3 threadsPerBlock(16, 16);
-  dim3 numBlocks(N / threadsPerBlock.x, N / threadsPerBlock.y);
-  // float *Ts;
-  float *Ts = new float[N];
-  cudaMallocManaged(&Ts, N*sizeof(float));
-  std::cout << "Memory allocated" << std::endl;
-  assemble_image_kernel<<<numBlocks, threadsPerBlock>>>(Ts, width);
-  // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
-  char name[] = "image.png";
-  std::cout << "File name: " << name << std::endl;
-  uint8_t data[width*width] = {};
-  for (int i = 0; i<width*width; i++){
+void write_image(float* Ts, int width, char* name){
+  uint8_t* data = new uint8_t[width * width];
+  for (int i = 0; i < width * width; i++) {
     data[i] = 255;
   }
   for (int i = 0; i<width; i++){
@@ -134,14 +142,33 @@ int main(){
       data[i*width + j] = (uint8_t) (255.0f * Ts[i*width + j]);
     }
   }
-  std::cout << "Stride: " << sizeof(data[0]) << std::endl;
-  std::cout << "Array: " << sizeof(data) << std::endl;
   int stride = width;
   stbi_write_png_compression_level = 1;
-  stbi_write_png(name, width, width, stbi_write_png_compression_level, &data, stride);
+  stbi_write_png(name, width, width, stbi_write_png_compression_level, data, stride);
+  delete[] data;
+}
+
+
+int main(){
+  const int width = 256;
+  const int N = width*width;
+  dim3 threadsPerBlock(16, 16);
+  dim3 numBlocks(N / threadsPerBlock.x, N / threadsPerBlock.y);
+  float *Ts;
+  cudaMallocManaged(&Ts, N*sizeof(float));
+  std::cout << "Memory allocated" << std::endl;
+  // Sphere sphere(Vec3(0.0f, 0.0f, 0.0f), 0.5f);
+  Cube cube(Vec3(0.0f, 0.0f, 0.0f), 0.5f);
+  assemble_image_kernel<<<numBlocks, threadsPerBlock>>>(Ts, width, cube);
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+  char name[] = "image.png";
+  std::cout << "File name: " << name << std::endl;
+  write_image(Ts, width, name);
   std::cout << "Image written" << std::endl;
   // Free memory
   cudaFree(Ts);
+  delete[] Ts;
   return 0;
 }
 
