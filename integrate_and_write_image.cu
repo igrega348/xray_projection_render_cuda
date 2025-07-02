@@ -142,30 +142,27 @@ void write_image(float* Ts, int width, char* name){
       data[i*width + j] = (uint8_t) (255.0f * Ts[i*width + j]);
     }
   }
+  std::cout << "Writing image to " << name << std::endl;
   int stride = width;
   stbi_write_png_compression_level = 1;
   stbi_write_png(name, width, width, stbi_write_png_compression_level, data, stride);
   delete[] data;
 }
 
-
 int main(){
-  const int width = 256;
+  const int width = 128;
   const int N = width*width;
   dim3 threadsPerBlock(16, 16);
   dim3 numBlocks(N / threadsPerBlock.x, N / threadsPerBlock.y);
-  float *Ts;
+  // float *Ts;
+  float *Ts = new float[N];
   cudaMallocManaged(&Ts, N*sizeof(float));
   std::cout << "Memory allocated" << std::endl;
-  // Sphere sphere(Vec3(0.0f, 0.0f, 0.0f), 0.5f);
-  Cube cube(Vec3(0.0f, 0.0f, 0.0f), 0.5f);
-  assemble_image_kernel<<<numBlocks, threadsPerBlock>>>(Ts, width, cube);
+  assemble_image_kernel<<<numBlocks, threadsPerBlock>>>(Ts, width);
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   char name[] = "image.png";
-  std::cout << "File name: " << name << std::endl;
   write_image(Ts, width, name);
-  std::cout << "Image written" << std::endl;
   // Free memory
   cudaFree(Ts);
   delete[] Ts;
