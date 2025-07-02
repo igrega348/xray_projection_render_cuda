@@ -111,6 +111,23 @@ __global__ void assemble_image_kernel(
   return;
 }
 
+void write_image(float* Ts, int width, char* name){
+  uint8_t* data = new uint8_t[width * width];
+  for (int i = 0; i < width * width; i++) {
+    data[i] = 255;
+  }
+  for (int i = 0; i<width; i++){
+    for (int j = 0; j<width; j++){
+      data[i*width + j] = (uint8_t) (255.0f * Ts[i*width + j]);
+    }
+  }
+  std::cout << "Writing image to " << name << std::endl;
+  int stride = width;
+  stbi_write_png_compression_level = 1;
+  stbi_write_png(name, width, width, stbi_write_png_compression_level, data, stride);
+  delete[] data;
+}
+
 int main(){
   const int width = 128;
   const int N = width*width;
@@ -124,22 +141,7 @@ int main(){
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   char name[] = "image.png";
-  std::cout << "File name: " << name << std::endl;
-  uint8_t data[width*width] = {};
-  for (int i = 0; i<width*width; i++){
-    data[i] = 255;
-  }
-  for (int i = 0; i<width; i++){
-    for (int j = 0; j<width; j++){
-      data[i*width + j] = (uint8_t) (255.0f * Ts[i*width + j]);
-    }
-  }
-  std::cout << "Stride: " << sizeof(data[0]) << std::endl;
-  std::cout << "Array: " << sizeof(data) << std::endl;
-  int stride = width;
-  stbi_write_png_compression_level = 1;
-  stbi_write_png(name, width, width, stbi_write_png_compression_level, &data, stride);
-  std::cout << "Image written" << std::endl;
+  write_image(Ts, width, name);
   // Free memory
   cudaFree(Ts);
   return 0;
